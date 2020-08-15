@@ -904,6 +904,30 @@ class ProfileManager:
             raise self.gcode.error(e.message)
         self.current_profile = prof_name
         self.bedmesh.set_mesh(z_mesh)
+    def load_offset_profile(self, prof_name):
+        z_mesh = self.bedmesh.get_mesh()
+        if z_mesh is None:
+            raise self.gcode.error(
+                "bed_mesh: Unable to offset mesh, the bed has not been probed")
+        profile = self.profiles.get(prof_name, None)
+        if profile is None:
+            raise self.gcode.error(
+                "bed_mesh: Unknown profile [%s]" % prof_name)
+        z_mesh_params = z_mesh.get_mesh_params()
+        offset_params = profile['mesh_params']
+        for key in PROFILE_OPTIONS.keys():
+            if z_mesh_params[key] != offset_params[key]:
+                raise self.gcode.error(
+                    "bed_mesh: Offset mesh parameter [%s] is incompatible\n"
+                    "with current mesh" % key)
+        z_mesh_matrix = z_mesh.get_probed_matrix()
+        offset_matrix = profile['points']
+        new_matrix = [[z + off for z, off in zip(line, offset_line)]
+            for line, offset_line in zip(z_mesh_matrix, offset_matrix)]
+        try:
+            z_mesh.build_mesh(new_matrix)
+        except BedMeshError as e:
+            raise self.gcode.error(e.message)
     def remove_profile(self, prof_name):
         if prof_name in self.profiles:
             configfile = self.printer.lookup_object('configfile')
@@ -920,6 +944,7 @@ class ProfileManager:
     def cmd_BED_MESH_PROFILE(self, gcmd):
         options = collections.OrderedDict({
             'LOAD': self.load_profile,
+            'LOAD_OFFSET': self.load_offset_profile,
             'SAVE': self.save_profile,
             'REMOVE': self.remove_profile
         })
